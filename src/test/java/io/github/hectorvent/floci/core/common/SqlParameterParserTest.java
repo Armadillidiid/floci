@@ -121,6 +121,61 @@ class SqlParameterParserTest {
     }
 
     @Test
+    void rewritesNumericPlaceholdersToPositional() {
+        ParsedSql parsed = SqlParameterParser.parse(
+                "insert into t (a, b) values (:1, :2)", Options.RDS_POSTGRESQL);
+
+        assertEquals("insert into t (a, b) values (?, ?)", parsed.sql());
+        assertEquals(List.of("1", "2"), parsed.parameterOrder());
+    }
+
+    @Test
+    void rewritesNumericPlaceholdersInRedshiftOptions() {
+        ParsedSql parsed = SqlParameterParser.parse(
+                "select * from t where a = :1 and b = :2", Options.REDSHIFT);
+
+        assertEquals("select * from t where a = ? and b = ?", parsed.sql());
+        assertEquals(List.of("1", "2"), parsed.parameterOrder());
+    }
+
+    @Test
+    void castsNumericPlaceholders() {
+        ParsedSql parsed = SqlParameterParser.parse("select :1::int", Options.RDS_POSTGRESQL);
+
+        assertEquals("select ?::int", parsed.sql());
+        assertEquals(List.of("1"), parsed.parameterOrder());
+    }
+
+    @Test
+    void leavesPostgresArraySlicesUntouched() {
+        ParsedSql parsed = SqlParameterParser.parse(
+                "select arr[1:3] from t where id = :1", Options.RDS_POSTGRESQL);
+
+        assertEquals("select arr[1:3] from t where id = ?", parsed.sql());
+        assertEquals(List.of("1"), parsed.parameterOrder());
+    }
+
+    @Test
+    void rewritesNumericPlaceholdersAfterPunctuationAndAtStart() {
+        assertEquals("?::text", SqlParameterParser.parse(":1::text", Options.RDS_POSTGRESQL).sql());
+        assertEquals(List.of("1"), SqlParameterParser.parse(":1", Options.RDS_POSTGRESQL).parameterOrder());
+        assertEquals(List.of("1"),
+                SqlParameterParser.parse("(:1)", Options.RDS_POSTGRESQL).parameterOrder());
+        assertEquals(List.of("1"),
+                SqlParameterParser.parse(", :1", Options.RDS_POSTGRESQL).parameterOrder());
+        assertEquals(List.of("1"),
+                SqlParameterParser.parse("= :1", Options.RDS_POSTGRESQL).parameterOrder());
+    }
+
+    @Test
+    void consumesMultiDigitNumericPlaceholders() {
+        ParsedSql parsed = SqlParameterParser.parse("select :12, :3", Options.RDS_POSTGRESQL);
+
+        assertEquals("select ?, ?", parsed.sql());
+        assertEquals(List.of("12", "3"), parsed.parameterOrder());
+    }
+
+    @Test
     void isMultiStatementIgnoresSemicolonsInsideCommentsLiteralsAndDollarQuotes() {
         assertFalse(SqlParameterParser.isMultiStatement("select 1 -- a; b\n", Options.REDSHIFT));
         assertFalse(SqlParameterParser.isMultiStatement("select * from t /* x; y */ where a = 1", Options.REDSHIFT));

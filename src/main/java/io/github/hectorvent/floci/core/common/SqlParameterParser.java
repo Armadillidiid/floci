@@ -96,7 +96,14 @@ public final class SqlParameterParser {
                     i += 2;
                     continue;
                 }
-                if (i + 1 < len && isNameStart(sql.charAt(i + 1))) {
+                char next = i + 1 < len ? sql.charAt(i + 1) : '\0';
+                // Drizzle's aws-data-api driver emits numeric names (:1, :2). Treat :N as a
+                // placeholder only when the colon is not preceded by a name part, so
+                // PostgreSQL array slices like arr[1:3] are left untouched.
+                boolean named = isNameStart(next);
+                boolean positional = Character.isDigit(next)
+                        && (i == 0 || !isNamePart(sql.charAt(i - 1)));
+                if (named || positional) {
                     int j = i + 1;
                     while (j < len && isNamePart(sql.charAt(j))) {
                         j++;
