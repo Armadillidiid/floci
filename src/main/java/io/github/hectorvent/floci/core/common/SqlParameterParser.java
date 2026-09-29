@@ -114,13 +114,6 @@ public final class SqlParameterParser {
                     continue;
                 }
                 char next = i + 1 < len ? sql.charAt(i + 1) : '\0';
-                // Drizzle's aws-data-api driver emits numeric names (:1, :2). Treat :N as a
-                // placeholder only outside a PostgreSQL subscript/slice, where a colon is slice
-                // syntax (arr[1:3], arr[:3], arr[1 : 3]) and the numeric bound must stay literal.
-                // The preceding-char check is extra defense, but bracket depth is what
-                // distinguishes a slice from a placeholder. Trade-off: a numeric placeholder
-                // used as a slice bound (arr[:1]) is intentionally left literal; slice syntax is
-                // the priority and Drizzle never emits slices.
                 boolean named = isNameStart(next);
                 boolean positional = bracketDepth == 0
                         && Character.isDigit(next)
