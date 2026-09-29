@@ -51,6 +51,7 @@ public final class SqlParameterParser {
         StringBuilder out = new StringBuilder(sql.length());
         List<String> order = new ArrayList<>();
         int len = sql.length();
+        int bracketDepth = 0;
         int i = 0;
         while (i < len) {
             char c = sql.charAt(i);
@@ -90,6 +91,22 @@ public final class SqlParameterParser {
                 continue;
             }
 
+            if (c == '[') {
+                bracketDepth++;
+                out.append(c);
+                i++;
+                continue;
+            }
+
+            if (c == ']') {
+                if (bracketDepth > 0) {
+                    bracketDepth--;
+                }
+                out.append(c);
+                i++;
+                continue;
+            }
+
             if (c == ':') {
                 if (i + 1 < len && sql.charAt(i + 1) == ':') {
                     out.append("::");
@@ -98,10 +115,15 @@ public final class SqlParameterParser {
                 }
                 char next = i + 1 < len ? sql.charAt(i + 1) : '\0';
                 // Drizzle's aws-data-api driver emits numeric names (:1, :2). Treat :N as a
-                // placeholder only when the colon is not preceded by a name part, so
-                // PostgreSQL array slices like arr[1:3] are left untouched.
+                // placeholder only outside a PostgreSQL subscript/slice, where a colon is slice
+                // syntax (arr[1:3], arr[:3], arr[1 : 3]) and the numeric bound must stay literal.
+                // The preceding-char check is extra defense, but bracket depth is what
+                // distinguishes a slice from a placeholder. Trade-off: a numeric placeholder
+                // used as a slice bound (arr[:1]) is intentionally left literal; slice syntax is
+                // the priority and Drizzle never emits slices.
                 boolean named = isNameStart(next);
-                boolean positional = Character.isDigit(next)
+                boolean positional = bracketDepth == 0
+                        && Character.isDigit(next)
                         && (i == 0 || !isNamePart(sql.charAt(i - 1)));
                 if (named || positional) {
                     int j = i + 1;

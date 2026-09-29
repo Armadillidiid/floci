@@ -156,6 +156,41 @@ class SqlParameterParserTest {
     }
 
     @Test
+    void leavesPostgresArraySlicesWithOmittedOrSpacedBoundsUntouched() {
+        for (Options options : List.of(Options.RDS_POSTGRESQL, Options.REDSHIFT)) {
+            ParsedSql omitted = SqlParameterParser.parse("select arr[:3] from t", options);
+            assertEquals("select arr[:3] from t", omitted.sql(), options.toString());
+            assertEquals(List.of(), omitted.parameterOrder(), options.toString());
+
+            ParsedSql spaced = SqlParameterParser.parse("select arr[1 : 3] from t", options);
+            assertEquals("select arr[1 : 3] from t", spaced.sql(), options.toString());
+            assertEquals(List.of(), spaced.parameterOrder(), options.toString());
+
+            ParsedSql leadingSpace = SqlParameterParser.parse("select arr[ : 3] from t", options);
+            assertEquals("select arr[ : 3] from t", leadingSpace.sql(), options.toString());
+            assertEquals(List.of(), leadingSpace.parameterOrder(), options.toString());
+        }
+    }
+
+    @Test
+    void leavesNestedPostgresSubscriptsUntouched() {
+        ParsedSql parsed = SqlParameterParser.parse("select matrix[1][2:3] from t", Options.RDS_POSTGRESQL);
+
+        assertEquals("select matrix[1][2:3] from t", parsed.sql());
+        assertEquals(List.of(), parsed.parameterOrder());
+    }
+
+    @Test
+    void rewritesNumericPlaceholderBesidePreservedSlice() {
+        for (Options options : List.of(Options.RDS_POSTGRESQL, Options.REDSHIFT)) {
+            ParsedSql parsed = SqlParameterParser.parse("select arr[:3], :1 from t", options);
+
+            assertEquals("select arr[:3], ? from t", parsed.sql(), options.toString());
+            assertEquals(List.of("1"), parsed.parameterOrder(), options.toString());
+        }
+    }
+
+    @Test
     void rewritesNumericPlaceholdersAfterPunctuationAndAtStart() {
         assertEquals("?::text", SqlParameterParser.parse(":1::text", Options.RDS_POSTGRESQL).sql());
         assertEquals(List.of("1"), SqlParameterParser.parse(":1", Options.RDS_POSTGRESQL).parameterOrder());
